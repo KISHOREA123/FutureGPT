@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: futuregpt
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: WEBHOOK_HOST
+        sync: false
+      - key: LOG_LEVEL
+        value: INFO
