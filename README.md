@@ -138,4 +138,4 @@ import pandas_ta as ta
 
 ## 📄 License
 
-MIT — free to use, modify, and distribute.
+MIT — Do not publish this without my permission
