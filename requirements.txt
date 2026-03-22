@@ -1,9 +1,6 @@
 # ══════════════════════════════════════════════════════════════════════════════
 # CoinGPT Bot — Python dependencies
-# Install: pip install -r requirements.txt
-#
-# Note: pandas-ta has been removed. RSI, MACD, and EMA are computed with
-# pure pandas math in services/indicator_service.py — no TA library needed.
+# Pinned to pre-built wheels — no C compiler needed on Render free tier
 # ══════════════════════════════════════════════════════════════════════════════
 
 # ── Telegram bot framework ────────────────────────────────────────────────────
@@ -16,9 +13,9 @@ uvicorn[standard]==0.30.6
 # ── Async HTTP client ─────────────────────────────────────────────────────────
 aiohttp==3.9.5
 
-# ── Data processing (indicators: RSI, MACD, EMA computed in pure pandas) ─────
-pandas==2.2.2
-numpy==1.26.4            # pandas dependency; pin to avoid ABI mismatches
+# ── Data processing — pre-built wheels only, no compilation needed ────────────
+pandas==2.1.4
+numpy==1.26.4
 
 # ── Environment variables ─────────────────────────────────────────────────────
 python-dotenv==1.0.1
