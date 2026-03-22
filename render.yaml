@@ -7,6 +7,7 @@ services:
     plan: free
     healthCheckPath: /health
     autoDeploy: true
+    startCommand: "uvicorn app:fastapi_app --host 0.0.0.0 --port $PORT --workers 1"
     envVars:
       - key: BOT_TOKEN
         sync: false
