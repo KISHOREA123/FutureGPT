@@ -1,4 +1,4 @@
-# 🚀 CoinGPT Bot — AI Crypto Assistant for Telegram
+# 🚀 FutureGPT Bot — AI Crypto Assistant for Telegram
 
 A production-ready Telegram bot built with **Python + aiogram 3** that delivers live crypto prices, trading signals, news, and AI-powered Q&A — all from a clean inline keyboard interface.
 
