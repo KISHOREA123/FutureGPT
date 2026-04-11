@@ -601,6 +601,27 @@ def main():
             BotCommand("start",      "Show all commands"),
         ])
         asyncio.create_task(watchlist_alert_loop(app))
+
+        # Start dummy web server for Render health checks (Free Tier Requirement)
+        import os
+        from aiohttp import web
+        
+        async def health_check(request):
+            return web.Response(text="Bot is running!")
+            
+        try:
+            port = int(os.environ.get("PORT", 8080))
+            app_web = web.Application()
+            app_web.router.add_get("/", health_check)
+            app_web.router.add_get("/health", health_check)
+            runner = web.AppRunner(app_web)
+            await runner.setup()
+            site = web.TCPSite(runner, '0.0.0.0', port)
+            await site.start()
+            logger.info(f"Dummy web server started on port {port} for Render")
+        except Exception as e:
+            logger.error(f"Failed to start dummy web server: {e}")
+
         logger.info("✅ Bot ready. All commands + keyboard UI registered.")
 
     app.post_init = post_init
