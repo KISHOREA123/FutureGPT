@@ -13,3 +13,5 @@ services:
         sync: false
       - key: ALERT_CHECK_INTERVAL
         value: "3600"
+      - key: PYTHON_VERSION
+        value: "3.11.0"
