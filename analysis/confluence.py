@@ -1,17 +1,10 @@
 """
-Enhanced Confluence Scoring Engine
+Enhanced Confluence Scoring Engine — v2.0
 Aggregates signals from ALL analysis modules into a single bias score.
-Now includes: OB/FVG scoring, Stochastic, trend strength weighting, HTF alignment.
+Includes: OB/FVG, Stochastic, trend strength, HTF alignment,
+          harmonic patterns, order flow/whale, session, ML prediction.
 
 Score range: -10 (max bearish) to +10 (max bullish)
-Bias:
-  +7 to +10 → Strong Buy
-  +4 to +6  → Bullish
-  +1 to +3  → Weak Bullish
-  0          → Neutral
-  -1 to -3  → Weak Bearish
-  -4 to -6  → Bearish
-  -7 to -10 → Strong Sell
 """
 
 
@@ -111,7 +104,7 @@ def score_indicators(ind: dict) -> tuple[int, list]:
         score -= 1
         notes.append("❌ Death Cross (-1)")
 
-    # Stochastic (NEW)
+    # Stochastic
     stoch = ind.get("stochastic", {})
     if stoch:
         stoch_cross = stoch.get("cross", "None")
@@ -156,12 +149,14 @@ def score_patterns(patterns: list) -> tuple[int, list]:
     notes = []
     score = 0
     for p in patterns:
+        reliability = p.get("reliability", "moderate")
+        pts = 2 if reliability in ("high", "very_high") else 1
         if p["type"] == "bullish":
-            score += 1
-            notes.append(f"✅ {p['pattern']} (+1)")
+            score += pts
+            notes.append(f"✅ {p['pattern']} (+{pts})")
         elif p["type"] == "bearish":
-            score -= 1
-            notes.append(f"❌ {p['pattern']} (-1)")
+            score -= pts
+            notes.append(f"❌ {p['pattern']} (-{pts})")
     return score, notes
 
 
@@ -189,7 +184,7 @@ def score_divergence(div_rsi: dict, div_macd: dict) -> tuple[int, list]:
 
 
 def score_fibonacci(fib: dict, current_price: float) -> tuple[int, list]:
-    """Score Fibonacci proximity (golden zone is high-value)."""
+    """Score Fibonacci proximity."""
     notes = []
     score = 0
 
@@ -208,7 +203,7 @@ def score_fibonacci(fib: dict, current_price: float) -> tuple[int, list]:
 
 
 def score_liquidity(liq: dict, current_price: float) -> tuple[int, list]:
-    """Score liquidity — proximity to pools can mean stop hunt risk."""
+    """Score liquidity proximity."""
     notes = []
     score = 0
 
@@ -237,7 +232,7 @@ def score_liquidity(liq: dict, current_price: float) -> tuple[int, list]:
 
 
 def score_order_blocks(ob: dict, current_price: float) -> tuple[int, list]:
-    """Score Order Block proximity (NEW)."""
+    """Score Order Block proximity."""
     notes = []
     score = 0
 
@@ -250,12 +245,11 @@ def score_order_blocks(ob: dict, current_price: float) -> tuple[int, list]:
             score -= 2
             notes.append("❌ Price at Bearish Order Block (-2)")
 
-    # Nearest unmitigated OBs as support/resistance
     nb = ob.get("nearest_bull")
     nbe = ob.get("nearest_bear")
     if nb and not at_ob:
         dist = abs(current_price - nb["mid"]) / current_price
-        if dist < 0.01:  # Within 1%
+        if dist < 0.01:
             score += 1
             notes.append("✅ Near Bullish OB (demand zone) (+1)")
     if nbe and not at_ob:
@@ -268,7 +262,7 @@ def score_order_blocks(ob: dict, current_price: float) -> tuple[int, list]:
 
 
 def score_fvg(fvg: dict, current_price: float) -> tuple[int, list]:
-    """Score Fair Value Gap proximity (NEW)."""
+    """Score Fair Value Gap proximity."""
     notes = []
     score = 0
 
@@ -280,6 +274,116 @@ def score_fvg(fvg: dict, current_price: float) -> tuple[int, list]:
         elif "Bearish" in at_fvg:
             score -= 1
             notes.append("❌ Price inside Bearish FVG (resistance) (-1)")
+
+    return score, notes
+
+
+def score_harmonic_patterns(harmonic_data: dict) -> tuple[int, list]:
+    """Score harmonic pattern signals (NEW)."""
+    notes = []
+    score = 0
+
+    if not harmonic_data or harmonic_data.get("count", 0) == 0:
+        return score, notes
+
+    for p in harmonic_data.get("patterns", [])[:3]:
+        reliability = p.get("reliability", "moderate")
+        pts = 2 if reliability in ("high", "very_high") else 1
+
+        if p["direction"] == "bullish":
+            score += pts
+            notes.append(f"✅ {p['emoji']} {p['name']} Harmonic (bullish) (+{pts})")
+        elif p["direction"] == "bearish":
+            score -= pts
+            notes.append(f"❌ {p['emoji']} {p['name']} Harmonic (bearish) (-{pts})")
+
+    return score, notes
+
+
+def score_order_flow(order_flow_data: dict) -> tuple[int, list]:
+    """Score whale/institutional activity (NEW)."""
+    notes = []
+    score = 0
+
+    if not order_flow_data:
+        return score, notes
+
+    whale_score = order_flow_data.get("whale_score", 0)
+    bias = order_flow_data.get("bias", "neutral")
+
+    if whale_score >= 50:
+        if bias == "bullish":
+            score += 2
+            notes.append(f"✅ 🐋 High whale activity — bullish bias (+2)")
+        elif bias == "bearish":
+            score -= 2
+            notes.append(f"❌ 🐋 High whale activity — bearish bias (-2)")
+    elif whale_score >= 25:
+        if bias == "bullish":
+            score += 1
+            notes.append(f"✅ 🐳 Moderate whale activity — bullish (+1)")
+        elif bias == "bearish":
+            score -= 1
+            notes.append(f"❌ 🐳 Moderate whale activity — bearish (-1)")
+
+    # Accumulation/Distribution phase
+    phase = order_flow_data.get("accum_dist", {}).get("phase", "")
+    if phase == "accumulation":
+        score += 1
+        notes.append("✅ 📦 Accumulation phase detected (+1)")
+    elif phase == "distribution":
+        score -= 1
+        notes.append("❌ 📤 Distribution phase detected (-1)")
+
+    return score, notes
+
+
+def score_session(session_data: dict) -> tuple[int, list]:
+    """Score based on active trading session (NEW)."""
+    notes = []
+    score = 0
+
+    if not session_data or "error" in session_data:
+        return score, notes
+
+    adj = session_data.get("confidence_adjustment", 0)
+    session_label = session_data.get("label", "")
+
+    if adj > 0:
+        notes.append(f"✅ {session_label} — Good liquidity")
+    elif adj < 0:
+        notes.append(f"⚠️ {session_label} — Low liquidity window")
+
+    return score, notes  # Session doesn't affect bias score, only confidence
+
+
+def score_ml_prediction(ml_data: dict, current_bias: int) -> tuple[int, list]:
+    """Score ML prediction alignment with technical bias (NEW)."""
+    notes = []
+    score = 0
+
+    if not ml_data or ml_data.get("prediction") == "N/A":
+        return score, notes
+
+    direction = ml_data.get("direction_raw", "")
+    confidence = ml_data.get("confidence", 0)
+    accuracy = ml_data.get("accuracy", 0)
+
+    if accuracy < 52:
+        notes.append(f"⚠️ ML model accuracy low ({accuracy}%) — signal discounted")
+        return score, notes
+
+    if confidence >= 60:
+        if direction == "UP" and current_bias > 0:
+            score += 1
+            notes.append(f"✅ 🤖 ML confirms bullish ({confidence}% conf) (+1)")
+        elif direction == "DOWN" and current_bias < 0:
+            score -= 1
+            notes.append(f"✅ 🤖 ML confirms bearish ({confidence}% conf) (-1)")
+        elif direction == "UP" and current_bias < 0:
+            notes.append(f"⚠️ 🤖 ML conflicts — predicts UP ({confidence}%)")
+        elif direction == "DOWN" and current_bias > 0:
+            notes.append(f"⚠️ 🤖 ML conflicts — predicts DOWN ({confidence}%)")
 
     return score, notes
 
@@ -313,6 +417,10 @@ def calculate_confluence(
     order_blocks: dict = None,
     fvg: dict = None,
     htf_bias: dict = None,
+    harmonic_data: dict = None,
+    order_flow_data: dict = None,
+    session_data: dict = None,
+    ml_data: dict = None,
 ) -> dict:
     """Master confluence scorer. Returns score, label, and breakdown."""
     all_notes = []
@@ -339,17 +447,17 @@ def calculate_confluence(
     s, n = score_liquidity(liquidity, current_price)
     total_score += s; all_notes += n
 
-    # ── NEW: Order Block scoring ─────────────────────
+    # ── Order Block scoring ─────────────────────
     if order_blocks:
         s, n = score_order_blocks(order_blocks, current_price)
         total_score += s; all_notes += n
 
-    # ── NEW: FVG scoring ─────────────────────────────
+    # ── FVG scoring ─────────────────────────────
     if fvg:
         s, n = score_fvg(fvg, current_price)
         total_score += s; all_notes += n
 
-    # ── NEW: HTF alignment bonus ─────────────────────
+    # ── HTF alignment bonus ─────────────────────
     if htf_bias and "error" not in htf_bias:
         htf_label = htf_bias.get("bias", "")
         if total_score > 0 and "BULLISH" in htf_label.upper():
@@ -364,6 +472,26 @@ def calculate_confluence(
         elif total_score < 0 and "BULLISH" in htf_label.upper():
             total_score += 1
             all_notes.append("⚠️ HTF conflicts — daily bullish (+1)")
+
+    # ── NEW: Harmonic Pattern scoring ───────────
+    if harmonic_data:
+        s, n = score_harmonic_patterns(harmonic_data)
+        total_score += s; all_notes += n
+
+    # ── NEW: Order Flow / Whale scoring ─────────
+    if order_flow_data:
+        s, n = score_order_flow(order_flow_data)
+        total_score += s; all_notes += n
+
+    # ── NEW: Session awareness ──────────────────
+    if session_data:
+        s, n = score_session(session_data)
+        total_score += s; all_notes += n
+
+    # ── NEW: ML Prediction alignment ────────────
+    if ml_data:
+        s, n = score_ml_prediction(ml_data, total_score)
+        total_score += s; all_notes += n
 
     # Clamp to -10..+10
     total_score = max(-10, min(10, total_score))

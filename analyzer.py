@@ -1,3 +1,8 @@
+"""
+Master Analysis Orchestrator — Enhanced v2.0
+Runs all analysis modules and returns combined results per timeframe.
+Now includes: ML prediction, harmonic patterns, order flow/whale analysis, session detection.
+"""
 from data_fetcher import fetch_from_both, fetch_ohlcv
 from analysis.support_resistance import get_support_resistance
 from analysis.market_structure import detect_market_structure
@@ -14,19 +19,20 @@ from analysis.htf_bias import get_daily_bias
 from analysis.trend_strength import get_trend_strength
 from analysis.regime import classify_regime
 from analysis.trade_setup import generate_trade_setup
-from config import TIMEFRAMES
+from analysis.harmonic_patterns import detect_harmonic_patterns
+from analysis.order_flow import analyze_order_flow
+from analysis.session_detector import detect_session
+from config import TIMEFRAMES, ML_ENABLED
+
+import logging
+logger = logging.getLogger(__name__)
 
 
 def run_full_analysis(symbol: str, timeframes: list = None) -> dict:
     """
     Orchestrate full analysis for a symbol across specified timeframes.
-    Returns a combined result dict per timeframe, plus HTF daily bias.
-    Now includes: trend strength, regime, signal grading, and trade setups.
-
-    Args:
-        symbol:     Coin symbol (e.g. 'BTC')
-        timeframes: List of timeframes to analyze (e.g. ['1h', '4h']).
-                    Defaults to TIMEFRAMES from config if None.
+    Returns a combined result dict per timeframe, plus HTF daily bias,
+    session info, and ML predictions.
     """
     if timeframes is None:
         timeframes = TIMEFRAMES
@@ -41,6 +47,14 @@ def run_full_analysis(symbol: str, timeframes: list = None) -> dict:
         results["__htf__"] = {"error": str(e)}
 
     htf_bias = results.get("__htf__", {})
+
+    # ── Session Detection (once, outside TF loop) ───────────────
+    try:
+        results["__session__"] = detect_session()
+    except Exception as e:
+        results["__session__"] = {"error": str(e)}
+
+    session_data = results.get("__session__", {})
 
     # ── Per-timeframe analysis ───────────────────────────────────
     for tf in timeframes:
@@ -70,10 +84,10 @@ def run_full_analysis(symbol: str, timeframes: list = None) -> dict:
             order_blocks = detect_order_blocks(df)
             fvg         = detect_fvg(df)
 
-            # ── NEW: Trend Strength ──────────────────────
+            # Trend Strength
             trend_data = get_trend_strength(df)
 
-            # ── NEW: Market Regime ───────────────────────
+            # Market Regime
             ema_trend = indicators["ema"]["trend"]
             ema_bias = "bullish" if "Uptrend" in ema_trend or "Bullish" in ema_trend else (
                 "bearish" if "Downtrend" in ema_trend or "Bearish" in ema_trend else "mixed"
@@ -87,7 +101,31 @@ def run_full_analysis(symbol: str, timeframes: list = None) -> dict:
                 trend_label=structure["trend"],
             )
 
-            # ── Enhanced Confluence (now includes OB/FVG/HTF) ──
+            # ── NEW: Harmonic Patterns ──────────────────────
+            try:
+                harmonic = detect_harmonic_patterns(df)
+            except Exception as e:
+                logger.warning(f"Harmonic detection error [{symbol}/{tf}]: {e}")
+                harmonic = {"patterns": [], "count": 0, "bias": "neutral"}
+
+            # ── NEW: Order Flow / Whale Analysis ────────────
+            try:
+                order_flow = analyze_order_flow(df)
+            except Exception as e:
+                logger.warning(f"Order flow error [{symbol}/{tf}]: {e}")
+                order_flow = {"whale_score": 0, "whale_label": "Error", "events": [], "bias": "neutral"}
+
+            # ── NEW: ML Prediction (if enabled) ─────────────
+            ml_prediction = None
+            if ML_ENABLED:
+                try:
+                    from analysis.ml_predictor import run_ml_prediction
+                    ml_prediction = run_ml_prediction(df)
+                except Exception as e:
+                    logger.warning(f"ML prediction error [{symbol}/{tf}]: {e}")
+                    ml_prediction = {"prediction": "N/A", "confidence": 0, "accuracy": 0, "features": []}
+
+            # ── Enhanced Confluence (now includes harmonics + whale + session) ──
             confluence = calculate_confluence(
                 ms=structure,
                 indicators=indicators,
@@ -100,9 +138,13 @@ def run_full_analysis(symbol: str, timeframes: list = None) -> dict:
                 order_blocks=order_blocks,
                 fvg=fvg,
                 htf_bias=htf_bias if "error" not in htf_bias else None,
+                harmonic_data=harmonic,
+                order_flow_data=order_flow,
+                session_data=session_data,
+                ml_data=ml_prediction,
             )
 
-            # ── NEW: Trade Setup (quality gate) ──────────
+            # ── Trade Setup (quality gate) ──────────────────
             trade_setup = generate_trade_setup(
                 symbol=symbol.upper(),
                 timeframe=tf,
@@ -119,6 +161,10 @@ def run_full_analysis(symbol: str, timeframes: list = None) -> dict:
                 fvg_data=fvg,
                 sr_data=sr,
                 htf_bias=htf_bias if "error" not in htf_bias else None,
+                harmonic_data=harmonic,
+                order_flow_data=order_flow,
+                session_data=session_data,
+                ml_data=ml_prediction,
             )
 
             results[tf] = {
@@ -141,6 +187,9 @@ def run_full_analysis(symbol: str, timeframes: list = None) -> dict:
                 "trend_strength":      trend_data,
                 "regime":              regime_data,
                 "trade_setup":         trade_setup,
+                "harmonic":            harmonic,
+                "order_flow":          order_flow,
+                "ml_prediction":       ml_prediction,
                 "candle_count":        len(df),
             }
 

@@ -27,6 +27,13 @@ from formatter import (
     format_report,
     format_trade_setup,
     format_grade_only,
+    format_harmonic_only,
+    format_whale_only,
+    format_ml_only,
+    format_news_only,
+    format_session_info,
+    format_heatmap,
+    format_indicators_only,
 )
 from scanner import run_scan, DEFAULT_SCAN_LIST
 from watchlist import (
@@ -103,11 +110,11 @@ async def do_full_analysis(coin: str, send_fn, reply_markup=None):
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = (
-        "👋 *Crypto Market Analyst Bot*\n\n"
+        "👋 *Crypto Market Analyst Bot v2.0*\n\n"
         "🪙 *Browse Coins:*\n"
         "`/coins` — Open coin browser \\(100 coins, tap to analyze\\)\n\n"
         "📊 *Analysis Commands:*\n"
-        "`/analyze BTC` — Full analysis \\(all modules\\)\n"
+        "`/analyze BTC` — Full analysis \\(all modules \\+ ML\\)\n"
         "`/report BTC` — Complete chart report \\(institutional grade\\)\n"
         "`/summary BTC` — Quick bias \\+ confluence score\n"
         "`/support BTC` — Support \& Resistance\n"
@@ -115,9 +122,17 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`/liquidity BTC` — Liquidity zones \& stop hunts\n"
         "`/fib BTC` — Fibonacci levels\n"
         "`/ob BTC` — Order Blocks \& Fair Value Gaps\n"
-        "`/volatility BTC` — ATR \\+ Bollinger Bands\n\n"
+        "`/volatility BTC` — ATR \\+ Bollinger Bands\n"
+        "`/indicators BTC` — Full 21\\-indicator dashboard\n\n"
+        "🔷 *Advanced Modules:*\n"
+        "`/whale BTC` — Order flow \& whale activity\n"
+        "`/harmonic BTC` — XABCD harmonic patterns\n"
+        "`/ml BTC` — ML price direction prediction\n"
+        "`/news BTC` — Crypto news sentiment\n"
+        "`/heatmap BTC` — Multi\\-TF trend heatmap\n"
+        "`/session` — Current trading session info\n\n"
         "🎯 *Trade Quality:*\n"
-        "`/trade BTC` — Trade setup with Entry/SL/TP\n"
+        "`/trade BTC` — Trade setup with Entry/SL/TP/TP2/TP3\n"
         "`/grade BTC` — Signal quality grade \\(A\\+ to F\\)\n\n"
         "🔍 *Scanner:*\n"
         "`/scan` — Scan top 20 coins by confluence\n"
@@ -236,6 +251,64 @@ async def cmd_grade(update, context):
     coin = parse_coin(context.args)
     if not coin: await update.message.reply_text("❌ Usage: `/grade <coin>`", parse_mode=ParseMode.MARKDOWN); return
     await _sub_analysis(update, coin, "Checking signal grade", format_grade_only)
+
+
+# ─────────────────────────────────────────────
+# NEW v2.0 COMMANDS
+# ─────────────────────────────────────────────
+
+async def cmd_whale(update, context):
+    coin = parse_coin(context.args)
+    if not coin: await update.message.reply_text("❌ Usage: `/whale <coin>`", parse_mode=ParseMode.MARKDOWN); return
+    await _sub_analysis(update, coin, "Analyzing whale activity", format_whale_only)
+
+async def cmd_ml(update, context):
+    coin = parse_coin(context.args)
+    if not coin: await update.message.reply_text("❌ Usage: `/ml <coin>`", parse_mode=ParseMode.MARKDOWN); return
+    await _sub_analysis(update, coin, "Running ML prediction", format_ml_only)
+
+async def cmd_harmonic(update, context):
+    coin = parse_coin(context.args)
+    if not coin: await update.message.reply_text("❌ Usage: `/harmonic <coin>`", parse_mode=ParseMode.MARKDOWN); return
+    await _sub_analysis(update, coin, "Detecting harmonic patterns", format_harmonic_only)
+
+async def cmd_heatmap(update, context):
+    coin = parse_coin(context.args)
+    if not coin: await update.message.reply_text("❌ Usage: `/heatmap <coin>`", parse_mode=ParseMode.MARKDOWN); return
+    await update.message.reply_text(f"⏳ Generating heatmap for *{coin}*...", parse_mode=ParseMode.MARKDOWN)
+    try:
+        results = run_full_analysis(coin, timeframes=["15m", "1h", "4h", "1d"])
+        action_kb = build_coin_action_keyboard(coin)
+        await send_chunks(update, format_heatmap(results), reply_markup=action_kb)
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+
+async def cmd_indicators(update, context):
+    coin = parse_coin(context.args)
+    if not coin: await update.message.reply_text("❌ Usage: `/indicators <coin>`", parse_mode=ParseMode.MARKDOWN); return
+    await _sub_analysis(update, coin, "Loading indicator dashboard", format_indicators_only)
+
+async def cmd_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    coin = parse_coin(context.args)
+    symbol = coin if coin else ""
+    label = f"*{coin}*" if coin else "crypto"
+    await update.message.reply_text(f"⏳ Fetching news sentiment for {label}...", parse_mode=ParseMode.MARKDOWN)
+    try:
+        from analysis.news_sentiment import get_news_sentiment
+        import asyncio
+        loop = asyncio.get_event_loop()
+        news_data = await loop.run_in_executor(None, lambda: get_news_sentiment(symbol))
+        await send_chunks(update, format_news_only(news_data))
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+
+async def cmd_session(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        from analysis.session_detector import detect_session
+        session_data = detect_session()
+        await update.message.reply_text(format_session_info(session_data), parse_mode=ParseMode.MARKDOWN)
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
 
 
 # ─────────────────────────────────────────────
@@ -421,6 +494,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "trade":      ("🎯 Trade Setup",       format_trade_setup),
             "grade":      ("🏆 Grade",             format_grade_only),
             "summary":    ("📑 Summary",           format_summary),
+            "whale":      ("🐋 Whale Activity",    format_whale_only),
+            "ml":         ("🤖 ML Prediction",     format_ml_only),
+            "harmonic":   ("🔷 Harmonic Patterns", format_harmonic_only),
+            "heatmap":    ("🗺 Heatmap",           format_heatmap),
+            "indicators": ("📈 Indicators",        format_indicators_only),
         }
 
         label, formatter = formatter_map.get(
@@ -511,6 +589,17 @@ async def watchlist_alert_loop(app: Application):
                     if fvg.get("at_fvg"):
                         triggers.append(f"📭 Price inside FVG: {fvg['at_fvg']}")
 
+                    # NEW v2.0: Whale activity alerts
+                    of = data.get("order_flow", {})
+                    if of.get("whale_score", 0) >= 50:
+                        triggers.append(f"🐋 High whale activity! Score: {of['whale_score']}/100 — {of.get('bias', 'neutral').upper()}")
+
+                    # NEW v2.0: Harmonic pattern alerts
+                    harmonic = data.get("harmonic", {})
+                    if harmonic.get("count", 0) > 0:
+                        for hp in harmonic.get("patterns", [])[:1]:
+                            triggers.append(f"🔷 {hp['emoji']} {hp['name']} Harmonic ({hp['direction']})")
+
                     if triggers:
                         conf  = data.get("confluence", {})
                         price = data["current_price"]
@@ -572,6 +661,14 @@ def main():
         ("grade",      cmd_grade),
         ("scan",       cmd_scan),
         ("alert",      cmd_alert),
+        # v2.0 commands
+        ("whale",      cmd_whale),
+        ("ml",         cmd_ml),
+        ("harmonic",   cmd_harmonic),
+        ("news",       cmd_news),
+        ("session",    cmd_session),
+        ("heatmap",    cmd_heatmap),
+        ("indicators", cmd_indicators),
     ]
     for name, fn in commands:
         app.add_handler(CommandHandler(name, fn))
@@ -585,12 +682,19 @@ def main():
     async def post_init(app: Application):
         await app.bot.set_my_commands([
             BotCommand("coins",      "Browse 100 coins with keyboard"),
-            BotCommand("analyze",    "Full market analysis"),
+            BotCommand("analyze",    "Full analysis + ML prediction"),
             BotCommand("report",     "Complete chart analysis report"),
             BotCommand("trade",      "Trade setup with entry/SL/TP"),
             BotCommand("grade",      "Signal quality grade (A+ to F)"),
             BotCommand("summary",    "Quick bias + confluence score"),
             BotCommand("scan",       "Scan & rank top coins"),
+            BotCommand("whale",      "Order flow & whale activity"),
+            BotCommand("harmonic",   "XABCD harmonic patterns"),
+            BotCommand("ml",         "ML price direction prediction"),
+            BotCommand("news",       "Crypto news sentiment"),
+            BotCommand("heatmap",    "Multi-TF trend heatmap"),
+            BotCommand("session",    "Current trading session info"),
+            BotCommand("indicators", "Full 21-indicator dashboard"),
             BotCommand("support",    "Support & Resistance levels"),
             BotCommand("patterns",   "Candlestick patterns"),
             BotCommand("liquidity",  "Liquidity zones & stop hunts"),
@@ -622,7 +726,7 @@ def main():
         except Exception as e:
             logger.error(f"Failed to start dummy web server: {e}")
 
-        logger.info("✅ Bot ready. All commands + keyboard UI registered.")
+        logger.info("✅ Bot v2.0 ready. All commands + keyboard UI registered.")
 
     app.post_init = post_init
 

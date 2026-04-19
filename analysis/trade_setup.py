@@ -34,6 +34,10 @@ def generate_trade_setup(
     fvg_data: dict,
     sr_data: dict,
     htf_bias: dict = None,
+    harmonic_data: dict = None,
+    order_flow_data: dict = None,
+    ml_data: dict = None,
+    session_data: dict = None,
 ) -> dict:
     """
     Generate a complete trade setup or WAIT/AVOID verdict.
@@ -65,6 +69,10 @@ def generate_trade_setup(
         regime_data=regime_data,
         htf_bias=htf_bias,
         confluence_bias=bias,
+        harmonic_data=harmonic_data,
+        order_flow_data=order_flow_data,
+        ml_data=ml_data,
+        session_data=session_data,
     )
 
     grade = grade_data["grade"]

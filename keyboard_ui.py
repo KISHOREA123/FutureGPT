@@ -28,6 +28,11 @@ ANALYSIS_LABELS = {
     "trade":      "🎯 Trade Setup",
     "grade":      "🏆 Signal Grade",
     "summary":    "📑 Quick Summary",
+    "whale":      "🐋 Whale Activity",
+    "ml":         "🤖 ML Prediction",
+    "harmonic":   "🔷 Harmonic Patterns",
+    "heatmap":    "🗺 Trend Heatmap",
+    "indicators": "📈 Indicator Dashboard",
 }
 
 
@@ -104,6 +109,15 @@ def build_coin_action_keyboard(coin: str) -> InlineKeyboardMarkup:
             InlineKeyboardButton("📋 Report",     callback_data=f"pick:report:{coin}"),
             InlineKeyboardButton("🎯 Trade",      callback_data=f"pick:trade:{coin}"),
             InlineKeyboardButton("🏆 Grade",      callback_data=f"pick:grade:{coin}"),
+        ],
+        [
+            InlineKeyboardButton("🐋 Whale",      callback_data=f"pick:whale:{coin}"),
+            InlineKeyboardButton("🤖 ML",         callback_data=f"pick:ml:{coin}"),
+            InlineKeyboardButton("🔷 Harmonic",   callback_data=f"pick:harmonic:{coin}"),
+        ],
+        [
+            InlineKeyboardButton("🗺 Heatmap",    callback_data=f"pick:heatmap:{coin}"),
+            InlineKeyboardButton("📈 Indicators", callback_data=f"pick:indicators:{coin}"),
         ],
         [
             InlineKeyboardButton("📊 Full Analysis", callback_data=f"pick:analyze:{coin}"),
